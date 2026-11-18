@@ -31,6 +31,11 @@ class Config:
         self.transcription_language = self._normalize_transcription_language(
             os.getenv("TRANSCRIPTION_LANGUAGE")
         )
+        # YouTube captions preempt the configured provider when the source is a
+        # YouTube URL. Read at call time so runtime overrides take effect.
+        self.youtube_captions_first = self._normalize_bool(
+            os.getenv("YOUTUBE_CAPTIONS_FIRST", "true"), default=True
+        )
         self.llm = self._get_runtime_setting("LLM") or self._infer_default_llm()
         # Optional separate model for the cross-window candidate rerank pass.
         self.rerank_llm = self._get_optional_env("RERANK_LLM") or self.llm
@@ -481,6 +486,15 @@ class Config:
     def _normalize_transcription_language(value: str | None) -> str:
         normalized = (value or "").strip().lower().replace("-", "_")
         return "" if normalized in ("", "auto") else normalized
+
+    @staticmethod
+    def _normalize_bool(value: str | None, default: bool = False) -> bool:
+        normalized = (value or "").strip().lower()
+        if normalized in ("1", "true", "yes", "on"):
+            return True
+        if normalized in ("0", "false", "no", "off"):
+            return False
+        return default
 
     @staticmethod
     def _normalize_youtube_metadata_provider(value: str | None) -> str:

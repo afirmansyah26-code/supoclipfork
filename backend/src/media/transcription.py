@@ -245,11 +245,27 @@ def _whisper_result_to_transcript_data(whisper_result: Dict[str, Any]) -> Dict[s
     }
 
 
-def transcribe_with_youtube_captions(video_url: str) -> Optional[str]:
-    """Extract a plain-text transcript from a YouTube video's captions via yt-dlp.
+def _youtube_caption_language_pref(runtime_config) -> list[str]:
+    """Build a preferred caption-language list for yt-dlp.
 
-    Only valid for YouTube-sourced videos. Returns plain text without word-level
-    timestamps, so subtitle generation is not supported on this path.
+    Manual captions are always preferred over auto-generated ones; the list
+    tries the spoken language first (when known), then English, then anything.
+    """
+    spoken = (getattr(runtime_config, "transcription_language", "") or "").split("_", 1)[0].lower()
+    prefs: list[str] = []
+    if spoken:
+        prefs.extend([spoken, f"{spoken}-orig"])
+    if "en" not in prefs:
+        prefs.append("en")
+    return prefs
+
+
+def _download_youtube_captions(video_url: str, video_id: str, temp_dir: Path) -> Optional[Path]:
+    """Download the best YouTube caption track and return its path.
+
+    Tries manual captions first across the preferred languages, then falls
+    back to auto-generated captions. json3 is preferred (it carries word
+    offsets); vtt is the fallback.
     """
     try:
         import yt_dlp
@@ -257,59 +273,285 @@ def transcribe_with_youtube_captions(video_url: str) -> Optional[str]:
         logger.error("yt-dlp is required for YouTube caption extraction")
         return None
 
+    runtime_config = get_config()
+    lang_prefs = _youtube_caption_language_pref(runtime_config)
+
+    # Prefer manual captions across all languages first, then auto captions.
+    sub_langs: list[str] = []
+    for lang in lang_prefs:
+        sub_langs.append(lang)
+    # Ask yt-dlp for both manual and auto subs for every preferred language.
+    # yt-dlp treats "en" as "en.*" when writesubtitles+writeautomaticsub are set.
+
+    base_tmpl = str(temp_dir / video_id)
+    formats = ["json3", "vtt"]
+
+    for sub_format in formats:
+        for lang in sub_langs:
+            out_tmpl = f"{base_tmpl}.{lang}"
+            ydl_opts = {
+                "quiet": True,
+                "no_warnings": True,
+                "writesubtitles": True,
+                "writeautomaticsub": True,
+                "subtitleslangs": [lang],
+                "subtitlesformat": sub_format,
+                "skip_download": True,
+                "outtmpl": out_tmpl,
+            }
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([video_url])
+            except Exception as e:
+                logger.debug("yt-dlp caption fetch (lang=%s fmt=%s) failed: %s", lang, sub_format, e)
+                continue
+
+            # yt-dlp names auto-subs "<id>.<lang>.<fmt>" and manual subs "<id>.<lang>.<fmt>"
+            candidate = temp_dir / f"{video_id}.{lang}.{sub_format}"
+            if candidate.exists() and candidate.stat().st_size > 0:
+                logger.info(
+                    "YouTube caption track found: lang=%s format=%s file=%s",
+                    lang, sub_format, candidate.name,
+                )
+                return candidate
+
+    # Last resort: list everything we actually downloaded for this id.
+    for ext in ("json3", "vtt", "srv3", "srt", "ttml"):
+        for f in sorted(temp_dir.glob(f"{video_id}.*.{ext}")):
+            if f.stat().st_size > 0:
+                logger.info("YouTube caption fallback track: %s", f.name)
+                return f
+    return None
+
+
+def _parse_json3_captions(raw: str) -> Optional[Dict[str, Any]]:
+    """Parse YouTube json3 caption format into a Whisper-like result dict.
+
+    json3 events carry ``tStartMs`` (cue start, ms) and ``dDurationMs``
+    (cue duration, ms); word-level offsets live in ``segs[].tOffsetMs``
+    (ms relative to the cue start). Returns ``None`` if no usable cues.
+
+    The returned dict mirrors a Whisper result: ``segments`` with
+    ``start``/``end`` in seconds and ``words`` with ``word``/``start``/``end``
+    in seconds, plus a top-level ``text`` and ``language``.
+    """
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+
+    events = data.get("events") or []
+    if not events:
+        return None
+
+    segments: List[Dict[str, Any]] = []
+    all_words: List[Dict[str, Any]] = []
+    full_text_parts: List[str] = []
+
+    for event in events:
+        segs = event.get("segs") or []
+        # Skip pure layout/newline events with no text.
+        text_parts = [s.get("utf8", "") for s in segs if s.get("utf8")]
+        cue_text = "".join(text_parts).strip()
+        if not cue_text:
+            continue
+
+        start_ms = int(event.get("tStartMs", 0))
+        duration_ms = int(event.get("dDurationMs", 0) or 0)
+        end_ms = start_ms + duration_ms if duration_ms > 0 else start_ms
+
+        # Word-level offsets: each seg with tOffsetMs is a word boundary.
+        words: List[Dict[str, Any]] = []
+        word_tokens = []
+        for seg in segs:
+            piece = (seg.get("utf8") or "").strip()
+            if not piece:
+                continue
+            offset_ms = start_ms + int(seg.get("tOffsetMs", 0) or 0)
+            # A seg may contain several whitespace-separated tokens; split so
+            # each word gets a proportional sub-offset (matches Whisper shape).
+            tokens = piece.split()
+            if not tokens:
+                continue
+            for i, tok in enumerate(tokens):
+                # Spread the seg across its tokens evenly when multiple exist.
+                tok_offset = offset_ms + (i * max(1, duration_ms // max(1, len(tokens))) if duration_ms else 0)
+                word_tokens.append((tok, tok_offset))
+
+        if word_tokens:
+            # Assign each word an end = next word start (or cue end).
+            for idx, (tok, w_start) in enumerate(word_tokens):
+                w_end = word_tokens[idx + 1][1] if idx + 1 < len(word_tokens) else end_ms
+                words.append({
+                    "word": tok,
+                    "start": w_start / 1000.0,
+                    "end": w_end / 1000.0,
+                    "probability": 1.0,
+                })
+        else:
+            # No per-word offsets: synthesize one word spanning the cue.
+            words.append({
+                "word": cue_text,
+                "start": start_ms / 1000.0,
+                "end": end_ms / 1000.0,
+                "probability": 1.0,
+            })
+
+        segment = {
+            "id": len(segments),
+            "start": start_ms / 1000.0,
+            "end": end_ms / 1000.0,
+            "text": cue_text,
+            "words": words,
+        }
+        segments.append(segment)
+        all_words.extend(words)
+        full_text_parts.append(cue_text)
+
+    if not segments:
+        return None
+
+    return {
+        "text": " ".join(full_text_parts),
+        "segments": segments,
+        "words": all_words,
+        "language": None,
+    }
+
+
+_VTT_TIMESTAMP_RE = re.compile(
+    r"(\d{1,2}:\d{2}:\d{2}\.\d{3}|\d{1,2}:\d{2}\.\d{3})\s*-->\s*(\d{1,2}:\d{2}:\d{2}\.\d{3}|\d{1,2}:\d{2}\.\d{3})"
+)
+
+
+def _vtt_timestamp_to_seconds(ts: str) -> float:
+    parts = ts.split(":")
+    seconds = float(parts[-1])
+    if len(parts) == 3:
+        seconds += int(parts[0]) * 3600 + int(parts[1]) * 60
+    elif len(parts) == 2:
+        seconds += int(parts[0]) * 60
+    return seconds
+
+
+def _parse_vtt_captions(raw: str) -> Optional[Dict[str, Any]]:
+    """Parse WebVTT caption format into a Whisper-like result dict.
+
+    VTT cues only carry cue-level timing (no per-word offsets), so each cue
+    becomes one segment and its words get evenly distributed across the cue
+    duration. Returns ``None`` if no timed cues are found.
+    """
+    segments: List[Dict[str, Any]] = []
+    all_words: List[Dict[str, Any]] = []
+    full_text_parts: List[str] = []
+
+    lines = raw.splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        match = _VTT_TIMESTAMP_RE.match(line)
+        if not match:
+            i += 1
+            continue
+        start_s = _vtt_timestamp_to_seconds(match.group(1))
+        end_s = _vtt_timestamp_to_seconds(match.group(2))
+        i += 1
+        cue_lines: List[str] = []
+        while i < len(lines) and lines[i].strip():
+            stripped = lines[i].strip()
+            if "-->" in stripped:
+                break
+            cue_lines.append(stripped)
+            i += 1
+        cue_text = " ".join(cue_lines).strip()
+        if not cue_text or end_s <= start_s:
+            continue
+
+        tokens = cue_text.split()
+        if not tokens:
+            continue
+        dur = end_s - start_s
+        per = dur / len(tokens)
+        words = []
+        for idx, tok in enumerate(tokens):
+            words.append({
+                "word": tok,
+                "start": start_s + idx * per,
+                "end": start_s + (idx + 1) * per,
+                "probability": 1.0,
+            })
+        segments.append({
+            "id": len(segments),
+            "start": start_s,
+            "end": end_s,
+            "text": cue_text,
+            "words": words,
+        })
+        all_words.extend(words)
+        full_text_parts.append(cue_text)
+
+    if not segments:
+        return None
+    return {
+        "text": " ".join(full_text_parts),
+        "segments": segments,
+        "words": all_words,
+        "language": None,
+    }
+
+
+def transcribe_with_youtube_captions(video_url: str) -> Optional[Dict[str, Any]]:
+    """Extract a timed transcript from a YouTube video's captions via yt-dlp.
+
+    Only valid for YouTube-sourced videos. Returns a Whisper-shaped result dict
+    (segments + word-level timestamps in seconds) when captions are available,
+    or ``None`` when the video has no usable caption track.
+
+    Unlike the older plain-text implementation, this preserves cue timings and
+    per-word offsets (when present in json3), so downstream subtitle generation
+    and clip-bound grounding work the same as a Whisper transcript.
+    """
     video_id = None
     match = re.search(r"(?:v=|youtu\.be/|shorts/)([A-Za-z0-9_-]{11})", video_url)
     if match:
         video_id = match.group(1)
-
     if not video_id:
         logger.error("Could not extract YouTube video ID from URL: %s", video_url)
         return None
 
     temp_dir = Path(get_config().temp_dir)
     temp_dir.mkdir(parents=True, exist_ok=True)
-    subs_path = temp_dir / f"{video_id}.en.vtt"
 
     try:
-        ydl_opts = {
-            "quiet": True,
-            "no_warnings": True,
-            "writesubtitles": True,
-            "writeautomaticsub": True,
-            "subtitleslangs": ["en"],
-            "subtitlesformat": "vtt",
-            "skip_download": True,
-            "outtmpl": str(temp_dir / video_id),
-        }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([video_url])
+        subs_path = _download_youtube_captions(video_url, video_id, temp_dir)
+        if not subs_path or not subs_path.exists():
+            logger.warning("No captions found for YouTube video %s", video_id)
+            return None
 
-        if subs_path.exists():
-            text = subs_path.read_text(encoding="utf-8")
-            lines = []
-            for line in text.splitlines():
-                stripped = line.strip()
-                if (
-                    stripped
-                    and not stripped.startswith("WEBVTT")
-                    and not stripped.startswith("Kind:")
-                    and not stripped.startswith("Language:")
-                    and "-->" not in line
-                    and not stripped.startswith("NOTE")
-                    and not re.match(r"^\d+$", stripped)
-                ):
-                    lines.append(stripped)
-            return " ".join(lines)
+        raw = subs_path.read_text(encoding="utf-8", errors="replace")
+        if subs_path.suffix == ".json3":
+            result = _parse_json3_captions(raw)
+        else:
+            result = _parse_vtt_captions(raw)
 
-        logger.warning("No English captions found for video %s", video_id)
-        return None
+        if not result:
+            logger.warning("YouTube captions for %s were empty or unparseable", video_id)
+            return None
+
+        logger.info(
+            "YouTube caption transcript: %d segments, %d words, %d chars",
+            len(result.get("segments", [])),
+            len(result.get("words", [])),
+            len(result.get("text", "")),
+        )
+        return result
 
     except Exception as e:
         logger.error("Failed to extract YouTube captions: %s", e)
         return None
     finally:
         for f in temp_dir.glob(f"{video_id}.*"):
-            if f.suffix in (".vtt", ".srt", ".ttml", ".json"):
+            if f.suffix in (".vtt", ".srt", ".ttml", ".json3", ".json", ".srv3"):
                 try:
                     f.unlink()
                 except OSError:
@@ -326,10 +568,26 @@ def get_video_transcript(
     Dispatches to AssemblyAI, local Whisper, or YouTube captions based on
     ``TRANSCRIPTION_PROVIDER``. ``source_url`` enables the youtube_captions
     provider, which needs the original URL rather than a local file path.
+
+    When the source is a YouTube URL and YouTube captions are available, they
+    are used regardless of the configured provider (they are free, instant, and
+    often include word-level timing). If captions are missing or unparseable,
+    the configured provider (Whisper/AssemblyAI) is used as a fallback. Set
+    ``YOUTUBE_CAPTIONS_FIRST=false`` to disable this shortcut.
     """
     logger.info(f"Getting transcript for: {video_path}")
     runtime_config = get_config()
     provider = runtime_config.transcription_provider
+
+    youtube_first = _youtube_captions_first_enabled(runtime_config)
+    if youtube_first and source_url and _is_youtube_url(source_url):
+        caption_result = transcribe_with_youtube_captions(source_url)
+        if caption_result:
+            return _format_youtube_captions(video_path, caption_result, runtime_config)
+        logger.info(
+            "YouTube captions unavailable for %s; falling back to %s",
+            source_url, provider,
+        )
 
     if provider == "whisper":
         return _get_transcript_with_whisper(video_path, runtime_config)
@@ -339,8 +597,42 @@ def get_video_transcript(
                 "youtube_captions provider requires a YouTube URL. "
                 "Pass source_url to get_video_transcript()."
             )
-        return _get_transcript_with_youtube_captions(source_url)
+        caption_result = transcribe_with_youtube_captions(source_url)
+        if not caption_result:
+            raise RuntimeError(
+                "YouTube caption extraction failed or returned no captions. "
+                "Falling back requires a different TRANSCRIPTION_PROVIDER."
+            )
+        return _format_youtube_captions(video_path, caption_result, runtime_config)
     return _get_transcript_with_assemblyai(video_path, speech_model, runtime_config)
+
+
+def _youtube_captions_first_enabled(runtime_config) -> bool:
+    """Whether YouTube captions should preempt the configured provider."""
+    return getattr(runtime_config, "youtube_captions_first", True)
+
+
+def _is_youtube_url(url: str) -> bool:
+    return bool(url and ("youtube.com/" in url or "youtu.be/" in url))
+
+
+def _format_youtube_captions(
+    video_path: Path, caption_result: Dict[str, Any], runtime_config
+) -> str:
+    """Cache and format a YouTube caption result for downstream pipeline use.
+
+    Mirrors the Whisper path: cache the word-level sidecar, then format the
+    transcript into timestamped lines for AI analysis.
+    """
+    cache_transcript_data(video_path, caption_result)
+    formatted_lines = format_transcript_for_analysis(caption_result)
+    result = "\n".join(formatted_lines)
+    logger.info(
+        "YouTube caption transcript formatted: %d segments, %d chars",
+        len(formatted_lines),
+        len(result),
+    )
+    return result
 
 
 def _get_transcript_with_assemblyai(
@@ -432,19 +724,6 @@ def _get_transcript_with_whisper(video_path: Path, runtime_config) -> str:
         len(result),
     )
     return result
-
-
-def _get_transcript_with_youtube_captions(source_url: str) -> str:
-    """Get transcript from YouTube captions (plain text, no word timings)."""
-    logger.info("Extracting YouTube captions for: %s", source_url)
-    transcript = transcribe_with_youtube_captions(source_url)
-    if not transcript:
-        raise RuntimeError(
-            "YouTube caption extraction failed or returned no captions. "
-            "Falling back requires a different TRANSCRIPTION_PROVIDER."
-        )
-    logger.info("YouTube caption transcript: %d chars", len(transcript))
-    return transcript
 
 
 def cache_transcript_data(video_path: Path, transcript) -> None:

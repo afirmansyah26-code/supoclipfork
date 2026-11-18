@@ -84,7 +84,6 @@ from .media.transcription import (
     _format_words_for_analysis,
     _get_transcript_with_assemblyai,
     _get_transcript_with_whisper,
-    _get_transcript_with_youtube_captions,
     _get_whisper_model,
     _join_transcript_tokens,
     _prepare_audio_for_transcription,

@@ -47,6 +47,7 @@ Use these claims freely. Each one is backed by the code or the site:
 | No watermark on exports | No watermark step anywhere in `backend/src` |
 | Bring your own AI: OpenAI, Google, Anthropic, OpenRouter, or local Ollama | `docs/configuration.md` |
 | Transcription can run locally with Whisper | `TRANSCRIPTION_PROVIDER=whisper` |
+| YouTube sources reuse the video's own captions before Whisper | `YOUTUBE_CAPTIONS_FIRST=true` |
 | Face-aware 9:16 reframing, word-synced captions, hook titles | `backend/src/media/` |
 | Export presets for TikTok, Reels, and Shorts | `backend/src/clip_editor.py` |
 | REST API with per-user keys, plus an MCP server | `docs/api-reference.md`, `mcp/README.md` |
