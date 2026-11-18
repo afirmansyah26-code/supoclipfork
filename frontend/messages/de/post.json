@@ -1,0 +1,11 @@
+{
+  "postDetails": "Beitragsdetails",
+  "generateWithAi": "Mit AI generieren",
+  "generating": "Generierung…",
+  "generateSuccess": "Titel & Beschreibung generiert",
+  "generateFailed": "Generierung fehlgeschlagen. Erneut versuchen.",
+  "titleLabel": "Titel",
+  "titlePlaceholder": "Beitragstitel",
+  "descriptionLabel": "Beschreibung",
+  "descriptionPlaceholder": "Beitragsbeschreibung mit Hashtags"
+}

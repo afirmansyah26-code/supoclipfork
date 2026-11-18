@@ -1529,6 +1529,43 @@ async def regenerate_clip(
         )
 
 
+@router.post("/{task_id}/clips/{clip_id}/generate-post")
+async def generate_post(
+    task_id: str, clip_id: str, request: Request, db: AsyncSession = Depends(get_db)
+):
+    """Generate a social post title + description for a clip using the configured LLM."""
+    from ..services.post_generator_service import generate_post_draft
+    from ..repositories.clip_repository import ClipRepository
+
+    try:
+        task_service = TaskService(db)
+        task = await _require_task_owner(request, task_service, db, task_id)
+
+        clip = await ClipRepository.get_clip_by_id(db, clip_id)
+        if not clip or clip.get("task_id") != task_id:
+            raise HTTPException(status_code=404, detail="Clip not found")
+
+        if not (clip.get("text") or "").strip() and not (clip.get("hook_title") or "").strip():
+            raise HTTPException(
+                status_code=422,
+                detail="This clip has no transcript or headline to generate a post from.",
+            )
+
+        result = await generate_post_draft(clip)
+        return result
+    except HTTPException:
+        raise
+    except RuntimeError as e:
+        logger.warning("Post generation config error: %s", e)
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.error("Error generating post: %s", e)
+        raise HTTPException(
+            status_code=500,
+            detail="Couldn't generate a post title and description. Try again.",
+        )
+
+
 @router.post("/{task_id}/settings")
 async def apply_task_settings(
     task_id: str, request: Request, db: AsyncSession = Depends(get_db)

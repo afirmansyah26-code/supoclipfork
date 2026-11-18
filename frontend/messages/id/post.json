@@ -1,0 +1,11 @@
+{
+  "postDetails": "Detail Posting",
+  "generateWithAi": "Generate dengan AI",
+  "generating": "Membuat…",
+  "generateSuccess": "Judul & deskripsi berhasil dibuat",
+  "generateFailed": "Tidak dapat membuat. Coba lagi.",
+  "titleLabel": "Judul",
+  "titlePlaceholder": "Judul posting",
+  "descriptionLabel": "Deskripsi",
+  "descriptionPlaceholder": "Deskripsi posting dengan hashtag"
+}

@@ -76,6 +76,7 @@ import { VIDEO_SOURCE_LABELS, VideoSourceIcon, videoSourceKind, type VideoSource
 import { cn } from "@/lib/utils";
 import { FontSelectOption, type FontOption } from "@/components/font-select-option";
 import { ClipPostList, ClipPublishButton, useSocialPostToasts } from "@/components/clip-publisher";
+import { GeneratePostPanel } from "@/components/app/generate-post-panel";
 import {
   ACTIVE_POST_STATUSES,
   type SocialConnection,
@@ -1125,10 +1126,15 @@ export default function TaskPage() {
         actions={focusedClip ? publishButton(focusedClip) : null}
       >
         {focusedClip && (
-          <ClipPostList
-            posts={socialPosts.filter((post) => post.clip_id === focusedClip.id)}
-            onChanged={loadSocialPosts}
-          />
+          <>
+            {task?.status === "completed" && (
+              <GeneratePostPanel taskId={task.id} clipId={focusedClip.id} />
+            )}
+            <ClipPostList
+              posts={socialPosts.filter((post) => post.clip_id === focusedClip.id)}
+              onChanged={loadSocialPosts}
+            />
+          </>
         )}
       </ClipFocus>
 

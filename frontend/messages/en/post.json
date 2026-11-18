@@ -1,0 +1,11 @@
+{
+  "postDetails": "Post Details",
+  "generateWithAi": "Generate with AI",
+  "generating": "Generating…",
+  "generateSuccess": "Title & description generated",
+  "generateFailed": "Couldn't generate. Try again.",
+  "titleLabel": "Title",
+  "titlePlaceholder": "Post title",
+  "descriptionLabel": "Description",
+  "descriptionPlaceholder": "Post description with hashtags"
+}

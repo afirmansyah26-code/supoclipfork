@@ -1,0 +1,11 @@
+{
+  "postDetails": "帖子详情",
+  "generateWithAi": "用 AI 生成",
+  "generating": "生成中…",
+  "generateSuccess": "标题和描述已生成",
+  "generateFailed": "无法生成。请重试。",
+  "titleLabel": "标题",
+  "titlePlaceholder": "帖子标题",
+  "descriptionLabel": "描述",
+  "descriptionPlaceholder": "带标签的帖子描述"
+}
