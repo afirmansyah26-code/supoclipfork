@@ -216,7 +216,7 @@ export function ClipFocus({ clip, taskId, index, total, busy, editable, onNaviga
             <div className="relative flex items-center justify-center bg-stone-950 p-3 md:p-4">
               <DynamicVideoPlayer key={clip.id} src={getClipUrl(clip.video_url, clip.filename)} autoPlay className="h-[min(58dvh,560px)]! md:h-[min(80dvh,640px)]!" />
             </div>
-            <div className="flex min-h-0 flex-col overflow-y-auto">
+            <div className="flex min-h-0 flex-col">
               <div className="flex items-center justify-between gap-2 border-b px-5 py-3 pr-12 text-xs text-muted-foreground">
                 <span className="tabular-nums">{t("position", { current: index + 1, total })}</span>
                 <div className="flex items-center gap-1">
@@ -224,7 +224,7 @@ export function ClipFocus({ clip, taskId, index, total, busy, editable, onNaviga
                   <Button size="icon-sm" variant="ghost" onClick={() => onNavigate(1)} aria-label={t("next")}><ChevronRight className="size-4" /></Button>
                 </div>
               </div>
-              <div className="space-y-5 p-5">
+              <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
                 <div>
                   {isPart(clip) && (
                     <p className="mb-1 text-xs font-medium tabular-nums text-muted-foreground">
@@ -287,7 +287,7 @@ export function ClipFocus({ clip, taskId, index, total, busy, editable, onNaviga
                 {clip.text && <TranscriptPreview text={clip.text} clipTitle={clipTitle(clip, t)} />}
                 {children}
               </div>
-              <div className="mt-auto flex flex-wrap items-center gap-2 border-t bg-muted/30 px-5 py-3">
+              <div className="flex flex-wrap items-center gap-2 border-t bg-muted/30 px-5 py-3">
                 <Button size="sm" onClick={onDownload} disabled={busy}>
                   {busy ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}{t("download")}
                 </Button>

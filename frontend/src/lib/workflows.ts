@@ -280,6 +280,10 @@ export type WorkflowMeta = {
   delivers?: string;
   ends_on?: string;
   post_caption?: string;
+  /** Saved social post title from the Generate panel (not shared publicly). */
+  post_title?: string;
+  /** Saved social post description from the Generate panel (not shared publicly). */
+  post_description?: string;
   first_unit?: number;
   last_unit?: number;
   // topic

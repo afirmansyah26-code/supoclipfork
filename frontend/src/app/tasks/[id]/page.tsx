@@ -1128,7 +1128,17 @@ export default function TaskPage() {
         {focusedClip && (
           <>
             {task?.status === "completed" && (
-              <GeneratePostPanel taskId={task.id} clipId={focusedClip.id} />
+              <GeneratePostPanel
+                taskId={task.id}
+                clipId={focusedClip.id}
+                onHookTitleSaved={(clipId, newHookTitle) => {
+                  setClips((prev) =>
+                    prev.map((clip) =>
+                      clip.id === clipId ? { ...clip, hook_title: newHookTitle } : clip,
+                    ),
+                  );
+                }}
+              />
             )}
             <ClipPostList
               posts={socialPosts.filter((post) => post.clip_id === focusedClip.id)}

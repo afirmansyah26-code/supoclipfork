@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { Check, Copy, Loader2, Sparkles, Save } from "lucide-react";
@@ -12,16 +12,47 @@ import { Textarea } from "@/components/ui/textarea";
 interface GeneratePostPanelProps {
   taskId: string;
   clipId: string;
+  /** Called after hook_title is persisted, so the parent can update its clip list. */
+  onHookTitleSaved?: (clipId: string, hookTitle: string) => void;
 }
 
-export function GeneratePostPanel({ taskId, clipId }: GeneratePostPanelProps) {
+export function GeneratePostPanel({ taskId, clipId, onHookTitleSaved }: GeneratePostPanelProps) {
   const t = useTranslations("post");
   const [hookTitle, setHookTitle] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [generating, setGenerating] = useState(false);
-  const [savingHook, setSavingHook] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  // Load any previously saved draft when the panel mounts (or clip changes).
+  const loadDraft = useCallback(async () => {
+    try {
+      const response = await fetch(
+        `/api/tasks/${taskId}/clips/${clipId}/post-draft`,
+        { cache: "no-store" },
+      );
+      if (response.ok) {
+        const data = await response.json();
+        if (data.hook_title) setHookTitle(data.hook_title);
+        if (data.title) setTitle(data.title);
+        if (data.description) setDescription(data.description);
+      }
+    } catch {
+      // silent — empty fields are fine
+    } finally {
+      setLoading(false);
+    }
+  }, [taskId, clipId]);
+
+  useEffect(() => {
+    setLoading(true);
+    setHookTitle("");
+    setTitle("");
+    setDescription("");
+    void loadDraft();
+  }, [clipId, loadDraft]);
 
   const copyToClipboard = async (text: string, field: string) => {
     if (!text) return;
@@ -57,16 +88,20 @@ export function GeneratePostPanel({ taskId, clipId }: GeneratePostPanelProps) {
     }
   };
 
-  const applyHookTitle = async () => {
-    if (!hookTitle.trim()) return;
-    setSavingHook(true);
+  const saveAll = async () => {
+    if (!hookTitle.trim() && !title.trim() && !description.trim()) return;
+    setSaving(true);
     try {
       const response = await fetch(
         `/api/tasks/${taskId}/clips/${clipId}/hook-title`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ hook_title: hookTitle.trim() }),
+          body: JSON.stringify({
+            hook_title: hookTitle.trim(),
+            title: title.trim(),
+            description: description.trim(),
+          }),
         },
       );
       if (!response.ok) {
@@ -74,10 +109,11 @@ export function GeneratePostPanel({ taskId, clipId }: GeneratePostPanelProps) {
         throw new Error(data?.detail || t("saveHookFailed"));
       }
       toast.success(t("saveHookSuccess"));
+      onHookTitleSaved?.(clipId, hookTitle.trim());
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t("saveHookFailed"));
     } finally {
-      setSavingHook(false);
+      setSaving(false);
     }
   };
 
@@ -91,7 +127,7 @@ export function GeneratePostPanel({ taskId, clipId }: GeneratePostPanelProps) {
           variant="outline"
           size="sm"
           onClick={generate}
-          disabled={generating}
+          disabled={generating || loading}
           className="gap-2"
         >
           {generating ? (
@@ -103,31 +139,26 @@ export function GeneratePostPanel({ taskId, clipId }: GeneratePostPanelProps) {
         </Button>
       </div>
 
+      {loading && (
+        <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground">
+          <Loader2 className="size-3 animate-spin" />
+          {t("loading") ?? "Loading…"}
+        </div>
+      )}
+
       {/* Hook title (on-screen headline for the video) */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <label className="text-xs text-muted-foreground">{t("hookTitleLabel")}</label>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => copyToClipboard(hookTitle, "hook_title")}
-              className="h-5 px-1.5 text-xs"
-              disabled={!hookTitle}
-            >
-              {copiedField === "hook_title" ? <Check className="size-3" /> : <Copy className="size-3" />}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={applyHookTitle}
-              className="h-5 px-1.5 text-xs"
-              disabled={!hookTitle.trim() || savingHook}
-            >
-              {savingHook ? <Loader2 className="size-3 animate-spin" /> : <Save className="size-3" />}
-              {t("applyToClip")}
-            </Button>
-          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => copyToClipboard(hookTitle, "hook_title")}
+            className="h-5 px-1.5 text-xs"
+            disabled={!hookTitle}
+          >
+            {copiedField === "hook_title" ? <Check className="size-3" /> : <Copy className="size-3" />}
+          </Button>
         </div>
         <Input
           value={hookTitle}
@@ -179,6 +210,18 @@ export function GeneratePostPanel({ taskId, clipId }: GeneratePostPanelProps) {
           rows={4}
         />
       </div>
+
+      {/* Save all fields to the clip */}
+      <Button
+        variant="default"
+        size="sm"
+        onClick={saveAll}
+        disabled={saving || loading || (!hookTitle.trim() && !title.trim() && !description.trim())}
+        className="w-full gap-2"
+      >
+        {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
+        {t("saveButton")}
+      </Button>
     </section>
   );
 }
