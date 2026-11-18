@@ -1,4 +1,4 @@
-"""Generate social post title + description from a clip via the configured LLM."""
+"""Generate social post title, hook title + description from a clip via the configured LLM."""
 
 import asyncio
 import json
@@ -16,23 +16,25 @@ logger = logging.getLogger(__name__)
 
 POST_TITLE_PROMPT = """You are a social media expert who creates viral content for TikTok, Reels, and Shorts.
 You will receive a JSON object with the clip's headline, transcript excerpt, and hook type.
-Generate a catchy social media post title and a description with hashtags.
+Generate three things: an on-screen hook title, a social post title, and a description with hashtags.
 
 Rules:
-- Title: max 100 characters, engaging and clickable, written in the same language as the transcript.
+- Hook title: 3-9 words, plain text, a bold on-screen headline burned into the top of the clip. Make a scrolling viewer stop: a bold claim, curiosity gap, number, or stakes taken directly from the segment. No hashtags, no emojis, no quotes. Written in the same language as the transcript.
+- Post title: max 100 characters, engaging and clickable, written in the same language as the transcript.
 - Description: 2-3 sentences with relevant hashtags, written in the same language as the transcript, viral-worthy.
 - Use only facts from the transcript and headline. Never invent quotes, statistics, or promises.
-- Return ONLY valid JSON in this exact format: {"title": "...", "description": "..."}
+- Return ONLY valid JSON in this exact format: {"hook_title": "...", "title": "...", "description": "..."}
 - No markdown, no code fences, no commentary."""
 
 
 class PostDraft(BaseModel):
+    hook_title: str
     title: str
     description: str
 
 
 async def generate_post_draft(clip: dict) -> dict:
-    """Generate a social post title + description from a clip's data.
+    """Generate a hook title + social post title + description from a clip's data.
 
     Uses the same LLM provider configured for the app (ollama → 9router in this
     deployment). Falls back gracefully if the model returns non-JSON.
@@ -58,7 +60,7 @@ async def generate_post_draft(clip: dict) -> dict:
         model,
         output_type=PostDraft,
         system_prompt=POST_TITLE_PROMPT,
-        model_settings={"max_tokens": 500},
+        model_settings={"max_tokens": 600},
         retries=1,
     )
 
@@ -71,10 +73,11 @@ async def generate_post_draft(clip: dict) -> dict:
     result = await asyncio.wait_for(agent.run(prompt), timeout=60)
     draft = result.output
 
-    if not draft.title.strip() and not draft.description.strip():
-        raise ValueError("The model returned an empty title and description.")
+    if not draft.title.strip() and not draft.description.strip() and not draft.hook_title.strip():
+        raise ValueError("The model returned an empty response.")
 
     return {
+        "hook_title": draft.hook_title.strip()[:200],
         "title": draft.title.strip()[:100],
         "description": draft.description.strip()[:2200],
     }
