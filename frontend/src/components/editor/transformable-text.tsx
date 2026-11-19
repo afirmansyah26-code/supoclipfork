@@ -29,11 +29,12 @@ export function TransformableText({ doc, layer, captionId, label, value, buttonL
   const [editing, setEditing] = useState(false);
   const drag = useRef<{ doc: EditDocument; bounds: TextBounds; group: string; sx: number; sy: number; corner?: TextCorner; x: number; y: number } | null>(null);
   const placement = (document: EditDocument): CaptionTransform => (captionId ? document.captionTransforms?.[captionId] : undefined) ?? textTransform(document, layer);
-  const begin = (corner?: TextCorner, x = 0, y = 0) => {
+  const begin = (corner?: TextCorner, x = 0, y = 0, capture?: Element, pointerId?: number) => {
     pause();
     const rect = frame.current?.getBoundingClientRect();
     if (!rect?.width || !rect.height) return;
     drag.current = { doc, bounds, group: `gesture:${uid()}`, sx: width / rect.width, sy: height / rect.height, corner, x, y };
+    if (capture && pointerId !== undefined && capture instanceof HTMLElement) capture.setPointerCapture(pointerId);
   };
   const move = (dx: number, dy: number) => {
     const start = drag.current;
@@ -87,8 +88,8 @@ export function TransformableText({ doc, layer, captionId, label, value, buttonL
     {!editing && TEXT_CORNERS.map(corner => <button key={corner} type="button"
       aria-label={t("preview.resizeText", { layer: label, corner: t(`preview.corners.${corner}`) })}
       className={`pointer-events-auto absolute z-10 size-3 touch-none rounded-[2px] border border-white bg-sky-500 opacity-0 shadow-sm outline-none group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 ${corner === "nw" || corner === "se" ? "cursor-nwse-resize" : "cursor-nesw-resize"}`}
-      style={{ left: corner.endsWith("e") ? "100%" : 0, top: corner.startsWith("s") ? "100%" : 0, transform: "translate(-50%,-50%)" }}
-      onPointerDown={event => { event.preventDefault(); event.stopPropagation(); begin(corner, event.clientX, event.clientY); event.currentTarget.setPointerCapture(event.pointerId); }}
+      style={{ left: corner.endsWith("e") ? "100%" : 0, top: corner.startsWith("s") ? "100%" : 0, transform: "translate(-50%,-50%)", touchAction: "none" }}
+      onPointerDown={event => { event.preventDefault(); event.stopPropagation(); begin(corner, event.clientX, event.clientY, event.currentTarget, event.pointerId); }}
       onPointerMove={event => {
         const start = drag.current;
         if (start?.corner && event.buttons & 1) move(event.clientX - start.x, event.clientY - start.y);

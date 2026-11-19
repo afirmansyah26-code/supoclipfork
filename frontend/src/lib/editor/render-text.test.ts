@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import { draft } from "./document.test-fixture";
-import { formatHookEditorText, prepareTextDraft, textEditorLayout } from "./render";
+import { formatHookEditorText, hookTitleLayout, prepareTextDraft, textEditorLayout, textLayerBounds } from "./render";
 
 function context() {
   return {
@@ -32,4 +32,37 @@ it("balances hook editor lines without changing stored casing or eating a typed 
   const formatted = formatHookEditorText({ ...draft, captions: { ...draft.captions, uppercase: true } }, 1080, 1920, text);
   expect(formatted.replace(/\s+/g, " ")).toBe(text);
   expect(prepareTextDraft(draft, .2, "hook", formatted).hookText).toBe(text.trim());
+});
+
+it("re-wraps a larger hook title to fit within the frame", () => {
+  const doc = {
+    ...draft,
+    hookTitle: "A long hook title that needs to wrap when its font gets larger",
+    textTransforms: { hook: { x: 0, y: 0, scale: 1.8 } },
+  };
+  const layout = hookTitleLayout(doc, 360, 640);
+  const longestWidth = Math.max(...layout.lines.map(line => line.length * layout.px * 0.52));
+  expect(layout.lines.length).toBeGreaterThan(1);
+  expect(longestWidth).toBeLessThanOrEqual(layout.usable);
+  expect(layout.x).toBeGreaterThanOrEqual(0);
+  expect(layout.x).toBeLessThanOrEqual(360);
+  expect(layout.top).toBeGreaterThanOrEqual(8);
+  expect(layout.top + layout.lines.length * layout.px * 1.2).toBeLessThanOrEqual(640);
+});
+
+it("keeps the hook selection bounds aligned with the measured visible title", () => {
+  const doc = {
+    ...draft,
+    hookTitle: "A larger title to check its selectable and resizable bounds",
+    textTransforms: { hook: { x: 0, y: 0.4, scale: 1.8 } },
+  };
+  const ctx = context();
+  const bounds = textLayerBounds(ctx, doc, 360, 640, 0.2, "hook");
+  expect(bounds).not.toBeNull();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.y).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(360);
+  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(640);
+  expect(bounds!.width).toBeGreaterThan(0);
+  expect(bounds!.height).toBeGreaterThan(0);
 });

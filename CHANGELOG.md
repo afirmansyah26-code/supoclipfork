@@ -6,6 +6,7 @@ Add a line here when a pull request changes something a user can see. Use **New*
 
 ## 2026-11-19
 
+- **Fixed:** Enlarged Hook Titles now wrap to fit the video frame, and their selection box can be dragged or resized in the editor. ([pull request link pending](https://github.com/FujiwaraChoki/supoclip/pulls))
 - **Improved:** Fix caption timing in the clip editor to remove overlaps between word captions. The adjustment stays close to the existing timestamps and can be undone. ([pull request link pending](https://github.com/FujiwaraChoki/supoclip/pulls))
 
 ## 2026-11-18

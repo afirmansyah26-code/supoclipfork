@@ -46,7 +46,7 @@ export function TextLayers({ doc, asset, time, index, videoRef, update, resoluti
       const captions = textLayerBounds(ctx, doc, size.width, size.height, at, "captions", asset.captionLooks, draft)
         ?? textLayerBounds(ctx, doc, size.width, size.height, at, "captions", asset.captionLooks);
       setBounds({ ...(hook ? { hook } : {}), ...(captions ? { captions } : {}) });
-      setLayouts({ hook: textEditorLayout(ctx, doc, size.width, size.height, at, "hook", draft), captions: textEditorLayout(ctx, doc, size.width, size.height, at, "captions", draft) });
+      setLayouts({ hook: textEditorLayout(ctx, doc, size.width, size.height, at, "hook", draft, asset.captionLooks), captions: textEditorLayout(ctx, doc, size.width, size.height, at, "captions", draft, asset.captionLooks) });
     };
     refresh();
     void loadEditorFont(doc.captions.font).then(refresh).catch(() => {});
@@ -66,15 +66,15 @@ export function TextLayers({ doc, asset, time, index, videoRef, update, resoluti
     return () => cancelAnimationFrame(frame);
   }, [doc, asset, index, time, videoRef, draft]);
   const shared = { doc, asset, width: size.width, height: size.height, frame: frameRef, pause: () => videoRef.current?.pause(), update };
-  return <div ref={frameRef} className="pointer-events-none absolute inset-0">
-    <canvas ref={hookCanvas} aria-label={t("captions.hookTitle")} width={resolution.width} height={resolution.height} className="absolute inset-0 h-full w-full" />
-    <canvas ref={captionCanvas} aria-label={t("timeline.tracks.captions")} width={resolution.width} height={resolution.height} className="absolute inset-0 h-full w-full" />
+  return <div ref={frameRef} className="pointer-events-none absolute inset-0" style={{ pointerEvents: "none" }}>
+    <canvas ref={hookCanvas} aria-hidden="true" width={resolution.width} height={resolution.height} className="pointer-events-none absolute inset-0 h-full w-full" />
+    <canvas ref={captionCanvas} aria-hidden="true" width={resolution.width} height={resolution.height} className="pointer-events-none absolute inset-0 h-full w-full" />
     {doc.hookTitle?.trim() && bounds.hook && (at >= range.start && at < range.end) && <TransformableText
       {...shared} layer="hook" label={t("captions.hookTitle")} value={doc.hookTitle} bounds={bounds.hook}
       buttonLabel={`${t("preview.region")}: ${t("captions.hookTitle")}: ${doc.hookTitle}`}
       measure={document => measure(document, "hook")}
       editorLayout={layouts.hook}
-      formatValue={text => formatHookEditorText(doc, size.width, size.height, text)}
+      formatValue={text => formatHookEditorText(doc, size.width, size.height, text, hookCanvas.current?.getContext("2d") ?? undefined, asset.captionLooks)}
       onDraft={text => editDraft("hook", text)}
       onCommit={hookTitle => update(current => ({ ...current, hookTitle }))}
     />}

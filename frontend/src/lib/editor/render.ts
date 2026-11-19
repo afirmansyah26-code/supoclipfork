@@ -3,6 +3,7 @@ import {
   captionGroups,
   captionAt,
   captionTransform,
+  clamp,
   frameRect,
   hookRange,
   mappedWords,
@@ -88,10 +89,11 @@ function wrapCaptionWords(ctx: CanvasRenderingContext2D, words: CaptionWord[], u
 }
 
 /** The native field supplies caret/selection; these are the same font metrics as the canvas. */
-export function textEditorLayout(ctx: CanvasRenderingContext2D, doc: EditDocument, width: number, height: number, time: number, layer: TextLayer, draft?: TextDraft) {
+export function textEditorLayout(ctx: CanvasRenderingContext2D, doc: EditDocument, width: number, height: number, time: number, layer: TextLayer, draft?: TextDraft, looks?: Record<string, CaptionLook>) {
   const group = captionAt(doc, time) ?? [];
   const transform: CaptionTransform = group.length ? captionTransform(doc, group) : textTransform(doc, "captions");
-  const hook = hookTitleLayout(draft?.hookText === undefined ? doc : { ...doc, hookTitle: draft.hookText }, width, height);
+  const hookDoc = draft?.hookText === undefined ? doc : { ...doc, hookTitle: draft.hookText };
+  const hook = hookTitleLayout(hookDoc, width, height, ctx, looks);
   const size = layer === "hook" ? hook.px : Math.max(1, Math.round((transform.size ?? doc.captions.size) * width * transform.scale / 1080));
   const fontSize = setAssFont(ctx, doc.captions.font, size);
   const wrapWidth = Math.max(1, layer === "hook" ? hook.usable : width - 120);
@@ -105,10 +107,10 @@ export function prepareTextDraft(doc: EditDocument, time: number, layer: TextLay
 }
 export type TextEditorLayout = ReturnType<typeof textEditorLayout>;
 
-export function formatHookEditorText(doc: EditDocument, width: number, height: number, text: string) {
+export function formatHookEditorText(doc: EditDocument, width: number, height: number, text: string, ctx?: CanvasRenderingContext2D, looks?: Record<string, CaptionLook>) {
   const words = text.trim().split(/\s+/).filter(Boolean);
   if (!words.length) return text;
-  const layout = hookTitleLayout({ ...doc, hookTitle: words.join(" ") }, width, height);
+  const layout = hookTitleLayout({ ...doc, hookTitle: words.join(" ") }, width, height, ctx, looks);
   let cursor = 0;
   return layout.lines.map(line => { const count = line.trim().split(/\s+/).length; const value = words.slice(cursor, cursor + count).join(" "); cursor += count; return value; }).join("\n") + (/\s$/.test(text) ? " " : "");
 }
@@ -330,37 +332,76 @@ function drawCaptions(
   ctx.restore();
 }
 
-/** Split the title into one line, or two lines balanced around the middle. */
-function balanceTitle(words: string[], maxChars: number) {
-  const text = words.join(" ");
-  if (text.length <= maxChars || words.length < 2) return [text];
-  let best = [text],
-    longest = text.length;
-  for (let i = 1; i < words.length; i++) {
-    const lines = [words.slice(0, i).join(" "), words.slice(i).join(" ")];
-    const candidate = Math.max(lines[0].length, lines[1].length);
-    if (candidate < longest) {
-      longest = candidate;
-      best = lines;
-    }
-  }
-  return best;
-}
-
-export function hookTitleLayout(doc: EditDocument, width: number, height: number) {
+export function hookTitleLayout(doc: EditDocument, width: number, height: number, ctx?: CanvasRenderingContext2D, looks?: Record<string, CaptionLook>, resolvedLook?: ReturnType<typeof resolveLook>) {
   const title = doc.hookTitle?.trim() ?? "";
   const text = doc.captions.uppercase ? title.toUpperCase() : title;
   const captionPx = Math.max(1, Math.round((doc.captions.size * width) / 1080));
   const basePx = Math.max(34, Math.min(66, Math.floor(captionPx * 0.82)));
   const usable = width - 2 * Math.max(48, Math.floor(width * HOOK_SIDE_MARGIN));
-  const maxChars = Math.max(10, Math.floor(usable / (basePx * 0.52)));
-  const lines = balanceTitle(text.split(/\s+/), maxChars);
-  const longest = Math.max(...lines.map(line => line.length));
-  const originalPx = longest > maxChars ? Math.max(30, Math.min(basePx, Math.floor(usable / (longest * 0.52)))) : basePx;
   const transform = textTransform(doc, "hook");
-  const px = originalPx * transform.scale;
-  const top = Math.max(48, Math.floor(height * HOOK_TOP_MARGIN)) + transform.y * height + (originalPx - px) * lines.length * 0.6;
-  return { lines, px, usable, top, x: width * (0.5 + transform.x) };
+  const words = text.split(/\s+/).filter(Boolean);
+  let px = basePx * transform.scale;
+  const look = resolvedLook ?? cachedLook(doc, looks);
+  let measureFont = basePx;
+  let measureFontScale = 1;
+  const setMeasureFont = (size: number) => {
+    if (ctx) {
+      const fontSize = setAssFont(ctx, doc.captions.font, size);
+      measureFontScale = size / fontSize;
+      measureFont = size;
+    }
+  };
+  setMeasureFont(px);
+  const measure = (value: string) => {
+    if (!ctx) return value.length * px * 0.52;
+    return ctx.measureText(value).width * px / measureFont / measureFontScale;
+  };
+  const measureLines = (value: string[]) => Math.max(0, ...value.map(line => measure(line)));
+  const wrap = () => {
+    const result: string[] = [];
+    let line = "";
+    for (const word of words) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (line && measure(candidate) > usable) {
+        result.push(line);
+        line = word;
+      } else {
+        line = candidate;
+      }
+    }
+    if (line) result.push(line);
+    return result;
+  };
+
+  let lines = wrap();
+  let padding = hookPadding(px, look) + (look.shadow ? Math.max(2, Math.floor(px / 20)) : 0) + 2;
+  const longestWord = Math.max(0, ...words.map(word => measure(word)));
+  if (longestWord > usable) {
+    px *= usable / longestWord;
+    setMeasureFont(px);
+    lines = wrap();
+    padding = hookPadding(px, look) + (look.shadow ? Math.max(2, Math.floor(px / 20)) : 0) + 2;
+  }
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const maxWidth = Math.max(1, width - 2 * padding);
+    const maxHeight = Math.max(1, height - 2 * padding);
+    if (measureLines(lines) <= maxWidth && lines.length * px * 1.2 <= maxHeight) break;
+    const factor = Math.min(maxWidth / Math.max(1, measureLines(lines)), maxHeight / Math.max(1, lines.length * px * 1.2));
+    px *= factor;
+    setMeasureFont(px);
+    lines = wrap();
+    padding = hookPadding(px, look) + (look.shadow ? Math.max(2, Math.floor(px / 20)) : 0) + 2;
+  }
+
+  const lineWidth = Math.max(0, ...lines.map(line => measure(line)));
+  const horizontalPadding = hookPadding(px, look) + (look.shadow ? Math.max(2, Math.floor(px / 20)) : 0) + 2;
+  const sideLimit = Math.max(0, width / 2 - lineWidth / 2 - horizontalPadding);
+  const x = width / 2 + clamp(width * transform.x, -sideLimit, sideLimit);
+  const preferredTop = Math.max(48, Math.floor(height * HOOK_TOP_MARGIN)) + transform.y * height + (basePx - px) * lines.length * 0.6;
+  const verticalPadding = hookPadding(px, look) + (look.shadow ? Math.max(2, Math.floor(px / 20)) : 0) + 2;
+  const top = clamp(preferredTop, verticalPadding, Math.max(verticalPadding, height - lines.length * px * 1.2 - verticalPadding));
+  const wrapWidth = Math.max(1, Math.min(usable, width - 2 * horizontalPadding));
+  return { lines, px, usable: wrapWidth, top, x };
 }
 
 /** The generated clip's headline: top safe area, fading in and out over ~4s. */
@@ -374,7 +415,7 @@ function drawHookTitle(
   const { start, end } = hookRange(doc);
   if (time < start || time >= end) return;
   const style = doc.captions;
-  const { lines, px, top, x: centreX } = hookTitleLayout(doc, width, height);
+  const { lines, px, top, x: centreX } = hookTitleLayout(doc, width, height, ctx, undefined, look);
   const hasOutline = !!look.strokeColor && look.strokeWidth > 0,
     // Mirrors build_hook_title_ass: an opaque box only without an outline.
     boxed = !hasOutline && !!look.backgroundColor,
@@ -435,14 +476,26 @@ function drawHookTitle(
 
 export interface TextBounds { x: number; y: number; width: number; height: number }
 
+function hookPadding(size: number, look: ReturnType<typeof resolveLook>) {
+  const hasOutline = !!look.strokeColor && look.strokeWidth > 0;
+  const boxed = !hasOutline && !!look.backgroundColor;
+  const outline = boxed
+    ? Math.max(4, Math.floor(size / 6))
+    : hasOutline
+      ? Math.max(look.strokeWidth, Math.round((size * look.strokeWidth) / 26))
+      : Math.max(2, Math.floor(size / 16));
+  return Math.max(5, outline) + 3;
+}
+
 /** Selection geometry in output pixels, measured with the renderer's font. */
 export function textLayerBounds(ctx: CanvasRenderingContext2D, doc: EditDocument, width: number, height: number, time: number, layer: TextLayer, looks?: Record<string, CaptionLook>, draft?: TextDraft): TextBounds | null {
   const look = cachedLook(doc, looks);
   if (layer === "hook") {
     if (!doc.hookTitle?.trim()) return null;
-    const { lines, px, top, x } = hookTitleLayout(draft?.hookText === undefined ? doc : { ...doc, hookTitle: draft.hookText }, width, height);
+    const hookDoc = draft?.hookText === undefined ? doc : { ...doc, hookTitle: draft.hookText };
+    const { lines, px, top, x } = hookTitleLayout(hookDoc, width, height, ctx, looks, look);
+    const pad = hookPadding(px, look) + (look.shadow ? Math.max(2, Math.floor(px / 20)) : 0) + 2;
     setAssFont(ctx, doc.captions.font, px);
-    const pad = Math.max(5, Math.round(px * (look.strokeWidth || 2) / 26)) + 3;
     const w = Math.max(...lines.map(line => ctx.measureText(line).width)) + pad * 2;
     return { x: x - w / 2, y: top - pad, width: w, height: lines.length * px * 1.2 + pad * 2 };
   }
