@@ -227,6 +227,63 @@ class EditorStore:
             await db.commit()
         return saved
 
+    async def sync_clip_hook_title(
+        self, key: str, previous_title: str, hook_title: str
+    ) -> bool:
+        """Refresh an editor's generated title without replacing a custom edit.
+
+        Bumping the draft revision makes a browser cache based on the previous
+        generated title stale, so reopening the editor loads this synchronized
+        version instead of autosaving the old title back over it.
+        """
+        async with self._session() as db:
+            row = (await db.execute(text("""
+                UPDATE editor_sessions
+                SET draft = CASE
+                        WHEN draft IS NOT NULL
+                         AND COALESCE(draft->>'hookTitle', '') <> :hook_title
+                         AND (
+                            COALESCE(draft->>'hookTitle', '') = :previous_title
+                            OR COALESCE(draft->>'hookTitle', '') = COALESCE(original->>'hookTitle', '')
+                         )
+                        THEN jsonb_set(draft, '{hookTitle}', to_jsonb(CAST(:hook_title AS TEXT)), true)
+                        ELSE draft
+                    END,
+                    original = CASE
+                        WHEN original IS NOT NULL
+                         AND COALESCE(original->>'hookTitle', '') <> :hook_title
+                        THEN jsonb_set(original, '{hookTitle}', to_jsonb(CAST(:hook_title AS TEXT)), true)
+                        ELSE original
+                    END,
+                    draft_revision = draft_revision + CASE
+                        WHEN draft IS NOT NULL
+                         AND COALESCE(draft->>'hookTitle', '') <> :hook_title
+                         AND (
+                            COALESCE(draft->>'hookTitle', '') = :previous_title
+                            OR COALESCE(draft->>'hookTitle', '') = COALESCE(original->>'hookTitle', '')
+                         )
+                        THEN 1 ELSE 0
+                    END,
+                    updated_at = NOW()
+                WHERE id = :id
+                  AND (
+                    (draft IS NOT NULL
+                     AND COALESCE(draft->>'hookTitle', '') <> :hook_title
+                     AND (
+                        COALESCE(draft->>'hookTitle', '') = :previous_title
+                        OR COALESCE(draft->>'hookTitle', '') = COALESCE(original->>'hookTitle', '')
+                     ))
+                    OR (original IS NOT NULL AND COALESCE(original->>'hookTitle', '') <> :hook_title)
+                  )
+                RETURNING id
+            """), {
+                "id": key,
+                "previous_title": previous_title,
+                "hook_title": hook_title,
+            })).first()
+            await db.commit()
+        return row is not None
+
     async def delete(self, key: str) -> None:
         async with self._session() as db:
             await db.execute(text("DELETE FROM editor_sessions WHERE id = :id"), {"id": key})

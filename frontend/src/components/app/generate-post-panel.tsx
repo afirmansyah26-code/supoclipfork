@@ -119,24 +119,35 @@ export function GeneratePostPanel({ taskId, clipId, onHookTitleSaved }: Generate
 
   return (
     <section className="rounded-xl border p-4 space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="sticky top-0 z-10 -mx-4 -mt-4 flex flex-wrap items-center justify-between gap-2 border-b bg-background px-4 py-3">
         <span className="text-xs font-medium text-muted-foreground uppercase">
           {t("postDetails")}
         </span>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={generate}
-          disabled={generating || loading}
-          className="gap-2"
-        >
-          {generating ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <Sparkles className="size-3.5" />
-          )}
-          {generating ? t("generating") : t("generateWithAi")}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={generate}
+            disabled={generating || loading}
+            className="gap-2"
+          >
+            {generating ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="size-3.5" />
+            )}
+            {generating ? t("generating") : t("generateWithAi")}
+          </Button>
+          <Button
+            size="sm"
+            onClick={saveAll}
+            disabled={saving || loading || (!hookTitle.trim() && !title.trim() && !description.trim())}
+            className="gap-2"
+          >
+            {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
+            {t("saveButton")}
+          </Button>
+        </div>
       </div>
 
       {loading && (
@@ -211,17 +222,6 @@ export function GeneratePostPanel({ taskId, clipId, onHookTitleSaved }: Generate
         />
       </div>
 
-      {/* Save all fields to the clip */}
-      <Button
-        variant="default"
-        size="sm"
-        onClick={saveAll}
-        disabled={saving || loading || (!hookTitle.trim() && !title.trim() && !description.trim())}
-        className="w-full gap-2"
-      >
-        {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
-        {t("saveButton")}
-      </Button>
     </section>
   );
 }

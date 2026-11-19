@@ -1656,6 +1656,23 @@ async def update_clip_hook_title(
         )
         await db.commit()
 
+        # Editor drafts are durable and keep their own revision. Refresh only
+        # the generated default title there; a title the user customized in
+        # the editor is intentionally left alone.
+        try:
+            from ...editor_state import editor_key, get_store
+
+            await get_store().sync_clip_hook_title(
+                editor_key(task_id, clip_id, clip["filename"]),
+                str(clip.get("hook_title") or "").strip(),
+                hook_title,
+            )
+        except Exception:
+            logger.warning(
+                "Could not sync the generated hook title to the editor session for clip %s",
+                clip_id,
+            )
+
         updated = await task_service.clip_repo.get_clip_by_id(db, clip_id)
         result = {"clip": updated, "hook_title": updated.get("hook_title")}
         meta_out = updated.get("workflow_meta") or {}

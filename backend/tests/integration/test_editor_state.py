@@ -91,6 +91,32 @@ async def test_prepare_keeps_an_existing_draft_and_a_failure_never_demotes_a_rea
     assert loaded["original"] == DOCUMENT
 
 
+async def test_clip_hook_title_sync_updates_only_the_generated_default(store, session):
+    key, *identity = session
+    original = {**DOCUMENT, "hookTitle": "Old generated title"}
+    await store.finish_prepare(key, *identity, ASSET, original)
+    edited = {**original, "volume": 0.5}
+    assert await store.save_draft(key, edited, 0) == 1
+
+    assert await store.sync_clip_hook_title(key, "Old generated title", "New generated title")
+    loaded = await store.load(key)
+    assert loaded["draft"] == {
+        "revision": 2,
+        "document": {**edited, "hookTitle": "New generated title"},
+    }
+    assert loaded["original"] == {**original, "hookTitle": "New generated title"}
+
+    # A custom editor title must win over later generated-title updates.
+    custom = {**loaded["draft"]["document"], "hookTitle": "My custom title"}
+    assert await store.save_draft(key, custom, 2) == 3
+    # The original preview still follows the generated default, while the
+    # user's custom title in the draft is preserved.
+    assert await store.sync_clip_hook_title(key, "New generated title", "Another generated title")
+    loaded = await store.load(key)
+    assert loaded["draft"]["document"]["hookTitle"] == "My custom title"
+    assert loaded["original"]["hookTitle"] == "Another generated title"
+
+
 async def test_rebuild_moves_the_draft_aside_and_prepares_a_fresh_one(store, session):
     key, *identity = session
     assert await store.rebuild(key, 0, "job") == "missing"

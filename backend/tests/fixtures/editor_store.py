@@ -112,6 +112,29 @@ class MemoryEditorStore:
         self._touch(key)
         return row["revision"]
 
+    async def sync_clip_hook_title(self, key, previous_title, hook_title):
+        row = self.sessions.get(key)
+        if not row:
+            return False
+        original_title = (row["original"] or {}).get("hookTitle", "")
+        draft_title = (row["draft"] or {}).get("hookTitle", "")
+        changed_draft = bool(
+            row["draft"] is not None
+            and draft_title != hook_title
+            and draft_title in {previous_title, original_title}
+        )
+        changed_original = bool(
+            row["original"] is not None and original_title != hook_title
+        )
+        if changed_draft:
+            row["draft"]["hookTitle"] = hook_title
+            row["revision"] += 1
+        if changed_original:
+            row["original"]["hookTitle"] = hook_title
+        if changed_draft or changed_original:
+            self._touch(key)
+        return changed_draft or changed_original
+
     async def delete(self, key):
         self.sessions.pop(key, None)
         for job_id in [j for j, job in self.jobs_by_id.items() if job["session_id"] == key]:
