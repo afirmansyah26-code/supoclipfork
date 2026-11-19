@@ -209,6 +209,7 @@
       "mute": "Silenciar",
       "unmute": "Activar sonido"
     },
+    "fixCaptionTiming": "Corregir tiempos de subtítulos",
     "hookStart": "Inicio del título, segundos",
     "hookEnd": "Fin del título, segundos"
   },

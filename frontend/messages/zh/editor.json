@@ -209,6 +209,7 @@
       "mute": "静音",
       "unmute": "取消静音"
     },
+    "fixCaptionTiming": "修复字幕时间",
     "hookStart": "标题开始时间（秒）",
     "hookEnd": "标题结束时间（秒）"
   },

@@ -8,6 +8,7 @@ import {
   CaptionsOff,
   Copy,
   Film,
+  Wrench,
   Scissors,
   Trash2,
   Type,
@@ -26,6 +27,7 @@ import {
   captionGroups,
   clamp,
   editDuration,
+  fixCaptionTiming,
   hookRange,
   locate,
   mappedBroll,
@@ -215,6 +217,7 @@ export function Timeline({
   };
 
   const groups = captionGroups(mappedWords(doc), doc.captions.wordsPerLine);
+  const timingFix = fixCaptionTiming(doc.words);
   const pieces = mappedBroll(doc);
   const step = rulerStep(total / zoom);
   // Labels too close to the end would be clipped by the card edge.
@@ -239,6 +242,16 @@ export function Timeline({
   return (
     <Panel aria-label={t("timeline.region")} className="flex min-h-0 flex-col lg:h-full">
       <div className="flex shrink-0 flex-wrap items-center gap-x-1 gap-y-1 px-3 pt-2 pb-1">
+        <ToolButton
+          label={t("timeline.fixCaptionTiming")}
+          size="sm"
+          className="h-7 rounded-md px-2 text-xs text-muted-foreground hover:text-foreground"
+          disabled={timingFix.fixed === 0}
+          onClick={() => update((current) => ({ ...current, words: fixCaptionTiming(current.words).words }), "caption-timing")}
+        >
+          <Wrench />
+          {t("timeline.fixCaptionTiming")}
+        </ToolButton>
         <ToolButton
           label={t("timeline.split")}
           shortcut="S"

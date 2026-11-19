@@ -13,8 +13,31 @@ import {
   setCaptionVisualSize,
   renderSegments,
   splitSegment,
+  fixCaptionTiming,
 } from "./document";
 import { draft } from "./document.test-fixture";
+
+describe("fixCaptionTiming", () => {
+  it("removes word overlaps without changing non-overlapping words or mutating input", () => {
+    const words = [
+      { id: "a", start: 0, end: 0.8, text: "one", highlight: false },
+      { id: "b", start: 0.6, end: 1.2, text: "two", highlight: false },
+      { id: "c", start: 1.4, end: 1.7, text: "three", highlight: false },
+    ];
+    const before = structuredClone(words);
+    const result = fixCaptionTiming(words);
+    expect(result.fixed).toBe(1);
+    expect(result.words[0].end).toBeCloseTo(0.7);
+    expect(result.words[1].start).toBeCloseTo(0.7);
+    expect(result.words[2]).toEqual(words[2]);
+    expect(words).toEqual(before);
+  });
+
+  it("leaves already-clean and empty timing lists unchanged", () => {
+    expect(fixCaptionTiming([])).toEqual({ words: [], fixed: 0 });
+    expect(fixCaptionTiming(draft.words)).toEqual({ words: draft.words, fixed: 0 });
+  });
+});
 
 it("keeps placements local to a caption occurrence across splits and repeated footage", () => {
   const doc = { ...draft, captions: { ...draft.captions, wordsPerLine: 1 }, segments: [{ id: "s", start: 0, end: 3 }, { id: "repeat", start: 0, end: 3 }] };

@@ -209,6 +209,7 @@
       "mute": "Silenciar",
       "unmute": "Ativar som"
     },
+    "fixCaptionTiming": "Corrigir tempo das legendas",
     "hookStart": "Início do título, segundos",
     "hookEnd": "Fim do título, segundos"
   },

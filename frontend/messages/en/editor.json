@@ -209,6 +209,7 @@
       "mute": "Mute",
       "unmute": "Unmute"
     },
+    "fixCaptionTiming": "Fix caption timing",
     "hookStart": "Title start, seconds",
     "hookEnd": "Title end, seconds"
   },

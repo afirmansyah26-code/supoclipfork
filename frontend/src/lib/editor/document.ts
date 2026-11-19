@@ -10,6 +10,29 @@ export interface CaptionWord {
   text: string;
   highlight: boolean;
 }
+
+/** Remove overlapping caption intervals while keeping each word near its source time. */
+export function fixCaptionTiming(words: CaptionWord[]): { words: CaptionWord[]; fixed: number } {
+  const sorted = words.map((word) => ({ ...word })).sort((a, b) => a.start - b.start || a.end - b.end);
+  let fixed = 0;
+  for (let i = 1; i < sorted.length; i++) {
+    const previous = sorted[i - 1];
+    const current = sorted[i];
+    if (current.start >= previous.end) continue;
+
+    const minDuration = 0.04;
+    const low = previous.start + minDuration;
+    const high = current.end - minDuration;
+    const boundary = low <= high
+      ? clamp((previous.end + current.start) / 2, low, high)
+      : clamp((previous.end + current.start) / 2, previous.start, current.end);
+    if (previous.end !== boundary || current.start !== boundary) fixed++;
+    previous.end = boundary;
+    current.start = boundary;
+  }
+  return { words: sorted, fixed };
+}
+
 export interface CaptionStyle {
   enabled: boolean;
   font:

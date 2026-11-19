@@ -209,6 +209,7 @@
       "mute": "Stumm",
       "unmute": "Ton an"
     },
+    "fixCaptionTiming": "Untertitel-Timing korrigieren",
     "hookStart": "Titelanfang, Sekunden",
     "hookEnd": "Titelende, Sekunden"
   },

@@ -209,6 +209,7 @@
       "mute": "Bisukan",
       "unmute": "Bunyikan"
     },
+    "fixCaptionTiming": "Perbaiki timing caption",
     "hookStart": "Awal judul, detik",
     "hookEnd": "Akhir judul, detik"
   },
