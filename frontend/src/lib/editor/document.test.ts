@@ -37,6 +37,17 @@ describe("fixCaptionTiming", () => {
     expect(fixCaptionTiming([])).toEqual({ words: [], fixed: 0 });
     expect(fixCaptionTiming(draft.words)).toEqual({ words: draft.words, fixed: 0 });
   });
+
+  it("does not create invalid intervals when densely overlapping words have no room", () => {
+    const words = [
+      { id: "a", start: 1, end: 1.01, text: "a", highlight: false },
+      { id: "b", start: 1.005, end: 1.015, text: "b", highlight: false },
+      { id: "c", start: 1.01, end: 1.02, text: "c", highlight: false },
+    ];
+    const result = fixCaptionTiming(words);
+    expect(result.words.every((word) => word.end > word.start)).toBe(true);
+    expect(result.words).toEqual(words);
+  });
 });
 
 it("keeps placements local to a caption occurrence across splits and repeated footage", () => {

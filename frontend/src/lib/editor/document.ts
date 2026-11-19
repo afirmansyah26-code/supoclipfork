@@ -23,9 +23,10 @@ export function fixCaptionTiming(words: CaptionWord[]): { words: CaptionWord[]; 
     const minDuration = 0.04;
     const low = previous.start + minDuration;
     const high = current.end - minDuration;
-    const boundary = low <= high
-      ? clamp((previous.end + current.start) / 2, low, high)
-      : clamp((previous.end + current.start) / 2, previous.start, current.end);
+    // If there is not enough room for two valid intervals, leave this overlap
+    // alone rather than producing a zero-length word rejected by the API.
+    if (high < low) continue;
+    const boundary = clamp((previous.end + current.start) / 2, low, high);
     if (previous.end !== boundary || current.start !== boundary) fixed++;
     previous.end = boundary;
     current.start = boundary;
