@@ -87,6 +87,7 @@
     "applyAll": "Terapkan ke semua clip",
     "hookTitle": "Judul hook",
     "hookDescription": "Tarik tepi judul di linimasa untuk mengatur kapan judul muncul. Kosongkan untuk menghapusnya.",
+    "hookSize": "Ukuran judul hook",
     "hookPlaceholder": "Tanpa judul hook",
     "transcript": "Transkrip",
     "wordCount": "{count} kata",

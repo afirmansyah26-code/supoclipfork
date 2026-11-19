@@ -87,6 +87,7 @@
     "applyAll": "Apply to all clips",
     "hookTitle": "Hook title",
     "hookDescription": "Drag the title’s timeline edges to set when it appears. Leave empty to remove it.",
+    "hookSize": "Hook title size",
     "hookPlaceholder": "No hook title",
     "transcript": "Transcript",
     "wordCount": "{count} words",

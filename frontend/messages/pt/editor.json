@@ -87,6 +87,7 @@
     "applyAll": "Aplicar a todos os clipes",
     "hookTitle": "Título de gancho",
     "hookDescription": "Arraste as bordas do título na linha do tempo para definir quando ele aparece. Deixe vazio para removê-lo.",
+    "hookSize": "Tamanho do título de gancho",
     "hookPlaceholder": "Sem título de gancho",
     "transcript": "Transcrição",
     "wordCount": "{count} palavras",

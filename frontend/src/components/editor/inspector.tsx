@@ -143,6 +143,8 @@ export function Inspector({
   const captionId = activeCaption ? captionKey(doc, activeCaption) : undefined;
   const placement: CaptionTransform = activeCaption ? captionTransform(doc, activeCaption) : textTransform(doc, "captions");
   const captionSize = (placement.size ?? doc.captions.size) * placement.scale;
+  const hookTransform = textTransform(doc, "hook");
+  const hookSize = Math.round(48 * hookTransform.scale);
   const scriptWords = useRef(doc.words);
   const [script, setScript] = useState<string | null>(null),
     [applying, setApplying] = useState(false);
@@ -375,6 +377,20 @@ export function Inspector({
               title={t("captions.hookTitle")}
               description={t("captions.hookDescription")}
             >
+              <Range
+                label={t("captions.hookSize")}
+                value={hookSize}
+                min={24}
+                max={96}
+                unit="px"
+                onChange={(size) => update((current) => ({
+                  ...current,
+                  textTransforms: {
+                    ...current.textTransforms,
+                    hook: { ...textTransform(current, "hook"), scale: size / 48 },
+                  },
+                }), "hook-size")}
+              />
               <Input
                 aria-label={t("captions.hookTitle")}
                 maxLength={200}
