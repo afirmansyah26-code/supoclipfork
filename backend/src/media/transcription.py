@@ -324,6 +324,14 @@ def _download_youtube_captions(video_url: str, video_id: str, temp_dir: Path) ->
     return None
 
 
+_YOUTUBE_SPEAKER_MARKER_RE = re.compile(r"^\s*>>\s*")
+
+
+def _strip_youtube_speaker_marker(text: str) -> str:
+    """Remove YouTube's non-spoken speaker-turn marker from a caption cue."""
+    return _YOUTUBE_SPEAKER_MARKER_RE.sub("", text, count=1)
+
+
 def _parse_json3_captions(raw: str) -> Optional[Dict[str, Any]]:
     """Parse YouTube json3 caption format into a Whisper-like result dict.
 
@@ -352,7 +360,7 @@ def _parse_json3_captions(raw: str) -> Optional[Dict[str, Any]]:
         segs = event.get("segs") or []
         # Skip pure layout/newline events with no text.
         text_parts = [s.get("utf8", "") for s in segs if s.get("utf8")]
-        cue_text = "".join(text_parts).strip()
+        cue_text = _strip_youtube_speaker_marker("".join(text_parts).strip())
         if not cue_text:
             continue
 
@@ -365,6 +373,10 @@ def _parse_json3_captions(raw: str) -> Optional[Dict[str, Any]]:
         word_tokens = []
         for seg in segs:
             piece = (seg.get("utf8") or "").strip()
+            if not piece:
+                continue
+            if not word_tokens:
+                piece = _strip_youtube_speaker_marker(piece)
             if not piece:
                 continue
             offset_ms = start_ms + int(seg.get("tOffsetMs", 0) or 0)
@@ -463,7 +475,7 @@ def _parse_vtt_captions(raw: str) -> Optional[Dict[str, Any]]:
                 break
             cue_lines.append(stripped)
             i += 1
-        cue_text = " ".join(cue_lines).strip()
+        cue_text = _strip_youtube_speaker_marker(" ".join(cue_lines).strip())
         if not cue_text or end_s <= start_s:
             continue
 

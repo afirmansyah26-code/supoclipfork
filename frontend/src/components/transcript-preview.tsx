@@ -19,6 +19,7 @@ interface TranscriptPreviewProps {
 
 export function TranscriptPreview({ text, clipTitle }: TranscriptPreviewProps) {
   const t = useTranslations("task")
+  const displayText = text.replace(/(^|\s)>>(?=\s|$)\s*/g, "$1").trim()
   const previewRef = useRef<HTMLParagraphElement>(null)
   const [isTruncated, setIsTruncated] = useState(false)
 
@@ -46,7 +47,7 @@ export function TranscriptPreview({ text, clipTitle }: TranscriptPreviewProps) {
       <h4 className="mb-2 font-medium text-foreground">{t("transcript.heading")}</h4>
       <div className="rounded-lg bg-muted p-3">
         <p ref={previewRef} className="line-clamp-4 text-sm leading-6 text-foreground/80">
-          {text}
+          {displayText}
         </p>
 
         {isTruncated && (
@@ -67,7 +68,7 @@ export function TranscriptPreview({ text, clipTitle }: TranscriptPreviewProps) {
                 </DialogDescription>
               </DialogHeader>
               <div className="max-h-[60vh] overflow-y-auto rounded-lg bg-muted p-4 text-sm leading-6 text-foreground/80 whitespace-pre-wrap">
-                {text}
+                {displayText}
               </div>
             </DialogContent>
           </Dialog>

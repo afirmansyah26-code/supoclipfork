@@ -4,6 +4,11 @@ What changed in SupoClip for people using the product. Newest dates are first.
 
 Add a line here when a pull request changes something a user can see. Use **New**, **Improved**, **Fixed**, or **Under the hood**, describe the change in plain language, and link the pull request. Skip internal-only work, or fold it into one **Under the hood** line. Do not include customer names, email addresses, user IDs, or anything else private.
 
+## 2026-11-24
+
+- **Fixed:** English YouTube speaker markers no longer appear in transcript text or generated captions. ([pull request link pending](https://github.com/FujiwaraChoki/supoclip/pulls))
+- **Fixed:** Copy buttons for hook titles, post titles and descriptions now work when browser clipboard access is blocked, with a manual copy fallback. ([pull request link pending](https://github.com/FujiwaraChoki/supoclip/pulls))
+
 ## 2026-11-19
 
 - **Fixed:** Enlarged Hook Titles now wrap to fit the video frame, and their selection box can be dragged or resized in the editor. ([pull request link pending](https://github.com/FujiwaraChoki/supoclip/pulls))

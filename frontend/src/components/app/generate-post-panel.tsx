@@ -8,6 +8,7 @@ import { Check, Copy, Loader2, Sparkles, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { useCopyText } from "@/lib/copy-text";
 
 interface GeneratePostPanelProps {
   taskId: string;
@@ -18,6 +19,7 @@ interface GeneratePostPanelProps {
 
 export function GeneratePostPanel({ taskId, clipId, onHookTitleSaved }: GeneratePostPanelProps) {
   const t = useTranslations("post");
+  const copyText = useCopyText();
   const [hookTitle, setHookTitle] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -56,13 +58,9 @@ export function GeneratePostPanel({ taskId, clipId, onHookTitleSaved }: Generate
 
   const copyToClipboard = async (text: string, field: string) => {
     if (!text) return;
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopiedField(field);
-      setTimeout(() => setCopiedField(null), 2000);
-    } catch {
-      // silent
-    }
+    if (await copyText(text) !== "copied") return;
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 2000);
   };
 
   const generate = async () => {
